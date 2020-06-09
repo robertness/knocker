@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1591737742130.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "1113FC78",
+    "lastKnownWriteTime" : 1591737819,
+    "last_content_update" : 1591737819672,
+    "path" : "~/Dropbox/code/knocker/vignettes/example_unconstrained_hmc.Rmd",
+    "project_path" : "vignettes/example_unconstrained_hmc.Rmd",
+    "properties" : {
+        "cursorPosition" : "2,39",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
