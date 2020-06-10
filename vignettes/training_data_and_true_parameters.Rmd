@@ -1,0 +1,106 @@
+---
+title: "Creating Training Data and True Parameters"
+author: "Sara Taheri and Robert Osazwa Ness"
+date: "6/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(usethis)
+```
+
+L is the total number of latent variables, N is the total number of causes and D is the total number of data points.
+
+```{r}
+seed = 234
+set.seed(seed)
+L = 5
+D = 1000
+N = 8
+```
+
+```f_u```, ```f_x```, ```f_m``` and ```f_y``` are functions that generate data for u,x,m and y and output the parameters associated with each variable which are $\mu$, $\alpha$, $\beta$ and $\gamma$ respectively.
+
+```{r}
+f_u <- function(){
+  mu <- rnorm(L)
+  u <- matrix(0, nrow=D, ncol=L)
+  for(i in 1:D){
+    for(j in 1:L){
+      u[i, j] <- rnorm(1, mu[j])
+    }
+  }
+  return(list(u = u, mu = mu))
+}
+sim <- f_u()
+mu <- sim$mu
+u_train  <- sim$u
+
+f_x <- function(u){
+  alpha <- matrix(0, nrow = L, ncol = N) 
+  for(i in 1:L){
+    for(j in 1:N){
+      alpha[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = u %*% alpha
+  x <- matrix(0, nrow = D, ncol = N)
+  for(i in 1:D){
+    for(j in 1:N){
+      x[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(x = x, alpha = alpha))
+}
+sim_x <- f_x(u_train)
+alpha <- sim_x$alpha
+x_train  <- sim_x$x
+f_m <- function(x){
+  beta <- matrix(0, nrow = N, ncol = 1) 
+  for(i in 1:N){
+    for(j in 1:1){
+      beta[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = x %*% beta
+  m <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      m[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(m = m, beta = beta))
+}
+sim_m <- f_m(x_train)
+beta <- sim_m$beta
+m_train  <- sim_m$m
+f_y <- function(m,u){
+  gamma <- matrix(0, nrow = (L+1), ncol = 1) 
+  for(i in 1:(L+1)){
+    for(j in 1:1){
+      gamma[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  m_and_u <- cbind(m,u)
+  linear_exp = m_and_u %*% gamma
+  y <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      y[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(y = y, gamma = gamma))
+}
+sim_y <- f_y(m_train,u_train)
+gamma <- sim_y$gamma
+y_train  <- sim_y$y
+```
+
+```{r}
+#usethis::use_data(mu,u_train,alpha,x_train,beta,m_train,gamma,y_train)
+```
+
