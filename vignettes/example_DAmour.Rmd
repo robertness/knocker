@@ -1,5 +1,5 @@
 ---
-title: "Gaussian Model Trained with Unconstrained HMC"
+title: "Gaussian model DAmour example"
 author: "Sara Taheri and Robert Osazwa Ness"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
@@ -9,7 +9,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
@@ -27,7 +27,6 @@ seed = 234
 set.seed(seed)
 ```
 
-
 The Stan model is a string and it specifies the data, parameters, and model.
 
 ```{r}
@@ -38,24 +37,20 @@ model_str <- "
         int N;
         matrix[D, L] u;
         matrix[D, N] x;
-        matrix[D, 1] m;
         matrix[D, 1] y;
-        matrix[D, L+1] m_and_u;
+        matrix[D, L+N] x_and_u;
     }
     parameters {
        vector[L] mu; 
        matrix[L, N] alpha;
-       matrix[N, 1] beta;
        matrix[L+1, 1] gamma;
     }
     transformed parameters {
        matrix[D, N] x_loc;
-       matrix[D, 1] m_loc;
        matrix[D, 1] y_loc;
        for (i in 1:D){
            x_loc[i, ] = u[i, ] * alpha;
-           m_loc[i, ] = x[i, ] * beta;
-           y_loc[i, ] = m_and_u[i,] * gamma;
+           y_loc[i, ] = x_and_u[i,] * gamma;
        }
     }
     model {
@@ -63,16 +58,12 @@ model_str <- "
         for (j in 1:L){
             target += normal_lpdf(alpha[j, ] | 0, 1);
         }
-        for (j in 1:N){
-            target += normal_lpdf(beta[j, ] | 0, 1);
-        }
-        for (j in 1:(L+1)){
+        for (j in 1:(L+N)){
             target += normal_lpdf(gamma[j, ] | 0, 1);
         }
         for (i in 1:D){
              target += normal_lpdf(u[i, ] | mu, 10);      // likelihood
              target += normal_lpdf(x[i, ] | x_loc[i, ], 1);
-             target += normal_lpdf(m[i, ] | m_loc[i, ], 1);
              target += normal_lpdf(y[i, ] | y_loc[i, ], 1);
         }
     }
@@ -87,32 +78,8 @@ mod <- stan_model(model_code = model_str)
 
 We want to test the model using MLE 'optimizing', because it is faster than Bayesian inference:
 
-```{r, message=FALSE, warning=FALSE}
-#You can find u_train, x_train, m_train, y_train, mu, aplha, beta and gamma in data folder. I don't know how to read them.
-#optim_fit <- optimizing(mod, data=list(u=u_train, L=L, D=D, x = x_train, N = N, m = m_train, y = y_train, m_and_u = cbind(m,u)))
-```
-
-Let's compare the estimates of parameters with their actual values:
-
 ```{r}
-#optim_fit$par[1:5] #to compare estimated mu with real mu
-#mu
-#optim_fit$par[6:45] #to compare estimated alpha with real alpha
-#alpha
-#optim_fit$par[46:53] #to compare estimated beta with real beta
-#beta
-#optim_fit$par[54:59] #to compare estimated gamma with real gamma
-#gamma
-```
-
-It seems like the parameters are closely estimated. Now we will proceed with HMC inference. This is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
-
-```{r}
-#You can find hmc_fit in data folder
-## I don't know how to read hmc_fit.rda
-#stan_trace(pars = "mu", hmc_fit)
-#stan_trace(pars = "alpha", hmc_fit)
-#stan_trace(pars = "beta", hmc_fit)
-#stan_trace(pars = "gamma", hmc_fit)
+#You can find u_train, x_train, y_train, mu, aplha, and gamma in data folder. I don't know how to read them.
+#optim_fit <- optimizing(mod, data=list(u=u_train, L=L, D=D, x = x_train, N = N, y = y_train, x_and_u = cbind(x,u)))
 ```
 

@@ -1,0 +1,30 @@
+---
+title: "Gaussian Model Trained with Constrained SVI"
+author: "Sara Taheri and Robert Osazwa Ness"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(purrr)
+library(rstan)
+library(bayesplot)
+library(ggplot2)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+seed = 234
+set.seed(seed)
+```
+
+This is currently empty.
