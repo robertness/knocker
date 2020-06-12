@@ -101,6 +101,6 @@ y_train  <- sim_y$y
 ```
 
 ```{r}
-#usethis::use_data(mu,u_train,alpha,x_train,beta,m_train,gamma,y_train)
+#usethis::use_data(mu,u_train,alpha,x_train,beta,m_train,gamma,y_train,L,D,N)
 ```
 
