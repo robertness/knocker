@@ -23,9 +23,75 @@ library(bayesplot)
 library(ggplot2)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
+```
+
+```{r}
 seed = 234
 set.seed(seed)
+L = 5
+D = 1000
+N = 8
+``` 
+
+```f_u```, ```f_x```, and ```f_y``` are functions that generate data for u,x, and y and output the parameters associated with each variable which are $\mu$, $\alpha$, and $\gamma$ respectively.
+
+```{r}
+f_u <- function(){
+  mu <- rnorm(L)
+  u <- matrix(0, nrow=D, ncol=L)
+  for(i in 1:D){
+    for(j in 1:L){
+      u[i, j] <- rnorm(1, mu[j])
+    }
+  }
+  return(list(u = u, mu = mu))
+}
+sim <- f_u()
+mu_alex <- sim$mu
+u_train_alex  <- sim$u
+
+f_x <- function(u){
+  alpha <- matrix(0, nrow = L, ncol = N) 
+  for(i in 1:L){
+    for(j in 1:N){
+      alpha[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = u %*% alpha
+  x <- matrix(0, nrow = D, ncol = N)
+  for(i in 1:D){
+    for(j in 1:N){
+      x[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(x = x, alpha = alpha))
+}
+sim_x <- f_x(u_train_alex)
+alpha_alex <- sim_x$alpha
+x_train_alex  <- sim_x$x
+
+f_y <- function(x,u){
+  gamma <- matrix(0, nrow = (L+N), ncol = 1) 
+  for(i in 1:(L+N)){
+    for(j in 1:1){
+      gamma[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  x_and_u <- cbind(x,u)
+  linear_exp = x_and_u %*% gamma
+  y <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      y[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(y = y, gamma = gamma))
+}
+sim_y <- f_y(x_train_alex,u_train_alex)
+gamma_alex <- sim_y$gamma
+y_train_alex  <- sim_y$y
 ```
+
 
 The Stan model is a string and it specifies the data, parameters, and model.
 
@@ -43,7 +109,7 @@ model_str <- "
     parameters {
        vector[L] mu; 
        matrix[L, N] alpha;
-       matrix[L+1, 1] gamma;
+       matrix[L+N, 1] gamma;
     }
     transformed parameters {
        matrix[D, N] x_loc;
@@ -72,14 +138,93 @@ model_str <- "
 
 Let's compile the model:
 
-```{r, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE, results=FALSE}
 mod <- stan_model(model_code = model_str)
 ```
 
 We want to test the model using MLE 'optimizing', because it is faster than Bayesian inference:
 
 ```{r}
-#You can find u_train, x_train, y_train, mu, aplha, and gamma in data folder. I don't know how to read them.
-#optim_fit <- optimizing(mod, data=list(u=u_train, L=L, D=D, x = x_train, N = N, y = y_train, x_and_u = cbind(x,u)))
+data_list <- list(u=u_train_alex, L=L, D=D, x = x_train_alex, N =N, y = y_train_alex, x_and_u = cbind(x_train_alex,u_train_alex))
+optim_fit <- optimizing(mod, data=data_list)
 ```
 
+Let's compare the estimates of parameters with their actual values:
+
+```{r}
+optim_fit$par[1:5] #estimated mu
+mu_alex #real mu
+optim_fit$par[6:45] #estimated alpha
+alpha_alex #real alpha
+optim_fit$par[46:58] #estimated gamma
+gamma_alex #real gamma
+```
+
+Some of the gamma parameters are not estmated correctly. Other than that, the rest of parameters are closely estimated. Let's try HMC and SVI. The result of running SVI when we don't have a hidden confounder is in data folder, under the name ```vb_fit_alex_without_hidden_confounder```. The result of running HMC when we don't have a hidden confounder is in data folder, under the name ```hmc_fit_alex_without_hidden_confounder```. It is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+
+```{r, echo=FALSE, results = FALSE}
+#vb_fit_alex_without_hidden_confounder <- rstan::vb(mod, data=data_list, seed = seed)
+#usethis::use_data(vb_fit_alex_without_hidden_confounder)
+
+#hmc_fit_alex_without_hidden_confounder <- rstan::sampling(mod, data=data_list,chains = 2, iter = 2000, warmup = 1000, seed = seed)
+#usethis::use_data(hmc_fit_alex_without_hidden_confounder)
+```
+
+```{r}
+summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][1:5]
+mu_alex #real mu
+```
+```{r}
+summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][6:45]
+alpha_alex #real alpha
+```
+
+```{r}
+summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][46:58]
+gamma_alex #real gamma
+```
+
+Again, some of the gamma parameters are not estimated correctly.
+
+# Estimating the parameters in presence of hidden confounder U
+
+```{r}
+data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train_alex, N =N, y = y_train_alex)
+optim_fit_with_hidden_confounder <- optimizing(mod, data=data_list_with_hidden_confounder)
+```
+
+```{r}
+optim_fit_with_hidden_confounder$par[1:5] #estimated mu
+mu_alex #real mu
+optim_fit_with_hidden_confounder$par[6:45] #estimated alpha
+alpha_alex #real alpha
+optim_fit_with_hidden_confounder$par[46:58] #estimated gamma
+gamma_alex #real gamma
+```
+
+It doesn't learn the parameter mu with the likelihood approach.
+ 
+let's use svi approach: (It seems like svi doesn't work when we don't pass u in the data list. I don't know what to do.)
+
+```{r}
+#vb_fit_alex_with_hidden_confounder <- rstan::vb(mod, data=data_list_with_hidden_confounder, seed = seed)
+#usethis::use_data(vb_fit_alex_with_hidden_confounder)
+```
+
+```{r}
+#knocker::vb_fit_alex_with_hidden_confounder
+```
+
+```{r}
+#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][1:5]
+#mu_alex #real mu
+```
+```{r}
+#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][6:45]
+#alpha_alex #real alpha
+```
+
+```{r}
+#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][46:58]
+#gamma_alex #real gamma
+```
