@@ -56,3 +56,29 @@ knocker::gamma
 ```
 
 Doesn't predict gamma well.
+
+# Estimating the parameters in presence of hidden confounder U
+
+```{r, message=FALSE, warning=FALSE}
+mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounder.stan")
+```
+
+```{r}
+data_list_with_hidden_confounder <- list(L=L, D=D, x = knocker::x_train, N =N, y = knocker::y_train, m = knocker::m_train)
+```
+
+```{r}
+optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=data_list_with_hidden_confounder)
+```
+
+
+```{r}
+optim_fit_with_hidden_confounder$par[1:5] #estimated mu
+knocker::mu #real mu
+optim_fit_with_hidden_confounder$par[5006:5045] #estimated alpha
+knocker::alpha #real alpha
+optim_fit_with_hidden_confounder$par[5046:5053] #estimated beta
+knocker::beta #real beta
+optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
+knocker::gamma #real gamma
+```
