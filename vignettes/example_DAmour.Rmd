@@ -189,42 +189,97 @@ Again, some of the gamma parameters are not estimated correctly.
 # Estimating the parameters in presence of hidden confounder U
 
 ```{r}
-data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train_alex, N =N, y = y_train_alex)
-optim_fit_with_hidden_confounder <- optimizing(mod, data=data_list_with_hidden_confounder)
+model_str_with_hidden_confounder <- "
+    data {
+        int L;
+        int D;
+        int N;
+        matrix[D, N] x;
+        matrix[D, 1] y;
+    }
+    parameters {
+       vector[L] mu;
+       matrix[D, L] u;
+       matrix[L, N] alpha;
+       matrix[L+N, 1] gamma;
+    }
+    transformed parameters {
+       matrix[D, N] x_loc;
+       matrix[D, 1] y_loc;
+       matrix[D, L+N] x_and_u;
+       x_and_u = append_col(x,u);
+       for (i in 1:D){
+           x_loc[i, ] = u[i, ] * alpha;
+           y_loc[i, ] = x_and_u[i, ] * gamma;
+       }
+    }
+    model {
+        target += normal_lpdf(mu | 0, 1);
+        for (j in 1:L){
+            target += normal_lpdf(alpha[j, ] | 0, 1);
+        }
+        for (j in 1:(L+N)){
+            target += normal_lpdf(gamma[j, ] | 0, 1);
+        }
+        for (i in 1:D){
+             target += normal_lpdf(u[i, ] | mu, 10);      // likelihood
+             target += normal_lpdf(x[i, ] | x_loc[i, ], 1);
+             target += normal_lpdf(y[i, ] | y_loc[i, ], 1);
+        }
+    }
+"
 ```
+
+Let's compile the model:
+
+```{r, message=FALSE, warning=FALSE, results=FALSE}
+mod_with_hidden_confounder <- stan_model(model_code = model_str_with_hidden_confounder)
+```
+
+```{r}
+data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train_alex, N =N, y = y_train_alex)
+```
+
+```{r}
+optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=data_list_with_hidden_confounder)
+```
+
 
 ```{r}
 optim_fit_with_hidden_confounder$par[1:5] #estimated mu
 mu_alex #real mu
-optim_fit_with_hidden_confounder$par[6:45] #estimated alpha
+#optim_fit_with_hidden_confounder$par[6:(D*L)] #estimated u
+#u_train_alex #real u
+optim_fit_with_hidden_confounder$par[5006:5045] #estimated alpha
 alpha_alex #real alpha
-optim_fit_with_hidden_confounder$par[46:58] #estimated gamma
+optim_fit_with_hidden_confounder$par[5046:5058] #estimated gamma
 gamma_alex #real gamma
 ```
 
-It doesn't learn the parameter mu with the likelihood approach.
+It doesn't learn the parameters correctly when u is hidden.
  
 let's use svi approach: (It seems like svi doesn't work when we don't pass u in the data list. I don't know what to do.)
 
 ```{r}
-#vb_fit_alex_with_hidden_confounder <- rstan::vb(mod, data=data_list_with_hidden_confounder, seed = seed)
+vb_fit_alex_with_hidden_confounder <- rstan::vb(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, seed = seed)
+vb_fit_alex_with_hidden_confounder
 #usethis::use_data(vb_fit_alex_with_hidden_confounder)
 ```
 
 ```{r}
-#knocker::vb_fit_alex_with_hidden_confounder
+knocker::vb_fit_alex_with_hidden_confounder
 ```
 
 ```{r}
-#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][1:5]
-#mu_alex #real mu
+summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][1:5]
+mu_alex #real mu
 ```
 ```{r}
-#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][6:45]
-#alpha_alex #real alpha
+summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][5006:5045]
+alpha_alex #real alpha
 ```
 
 ```{r}
-#summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][46:58]
-#gamma_alex #real gamma
+summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][5046:5058]
+gamma_alex #real gamma
 ```
