@@ -82,3 +82,36 @@ knocker::beta #real beta
 optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
 knocker::gamma #real gamma
 ```
+
+It doesn't learn the parameters correctly when u is hidden.
+
+## SVI in presecne of hidden confounder
+ 
+let's use svi approach. The result of svi algorithm can be found in data folder, under the name of ```vb_fit_with_hidden_confounder```.
+
+```{r}
+#vb_fit_with_hidden_confounder <- rstan::vb(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, seed = seed)
+#usethis::use_data(vb_fit_with_hidden_confounder)
+```
+
+```{r}
+summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][1:5]
+knocker::mu #real mu
+```
+
+```{r}
+summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][5006:5045]
+knocker::alpha #real alpha
+```
+
+```{r}
+summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][5046:5053]
+knocker::beta #real beta
+```
+
+It can learn the beta parameters perfectly well!
+
+```{r}
+summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][5054:5059]
+knocker::gamma #real gamma
+```
