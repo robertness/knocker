@@ -260,16 +260,13 @@ It doesn't learn the parameters correctly when u is hidden.
 
 ##SVI in presecne of hidden confounder
  
-let's use svi approach: (It seems like svi doesn't work when we don't pass u in the data list. I don't know what to do.)
+let's use svi approach:
 
 ```{r}
 #vb_fit_alex_with_hidden_confounder <- rstan::vb(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, seed = seed)
 #usethis::use_data(vb_fit_alex_with_hidden_confounder)
 ```
 
-```{r}
-knocker::vb_fit_alex_with_hidden_confounder
-```
 
 ```{r}
 summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][1:5]
@@ -286,3 +283,9 @@ gamma_alex #real gamma
 ```
 
 ##HMC in presecne of hidden confounder
+
+```{r}
+#hmc_fit_alex_with_hidden_confounder <- rstan::sampling(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, chains = 2, iter = 2500, warmup = 1500, seed = seed)
+#usethis::use_data(hmc_fit_alex_with_hidden_confounder)
+```
+

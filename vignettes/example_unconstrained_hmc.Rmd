@@ -60,7 +60,7 @@ optim_fit$par[54:59] #estimated gamma
 knocker::gamma #real gamma
 ```
 
-It seems like the parameters are closely estimated except for $\mu$. Now we will proceed with HMC inference. This is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+It seems like the parameters are closely estimated except for $\mu$. Now we will proceed with HMC inference. ```hmc_fit``` is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
 
 ```{r fig.height=8, fig.width=8}
 stan_trace(pars = "mu", knocker::hmc_fit)
@@ -82,19 +82,20 @@ Now let's extract the samples:
 
 ```{r}
 samples_mu <- extract(knocker::hmc_fit, "mu")
-class(samples_mu)
 colnames(samples_mu$mu) <- paste0("mu_", 1:L)
 summary(samples_mu$mu)
 knocker::mu
 ```
 
 ```{r}
+#It doesn't work!
 # samples_alpha <- extract(knocker::hmc_fit, "alpha")
 # summary(samples_alpha$alpha)
 # knocker::alpha
 ```
 
 ```{r}
+#It doesn't work!
 #samples_beta <- extract(knocker::hmc_fit, "beta")
 # colnames(samples_beta$beta) <- paste0("beta_", 1:N)
 #summary(samples_beta$beta)
@@ -102,8 +103,67 @@ knocker::mu
 ```
 
 ```{r}
+#It doesn't work!
 #samples_gamma <- extract(knocker::hmc_fit, "gamma")
 #colnames(samples_gamma$gamma) <- paste0("gamma_", 1:(L+1))
 #summary(samples_gamma$gamma)
 #knocker::gamma
 ```
+
+# Estimating the parameters in presence of hidden confounder U
+
+```{r, message=FALSE, warning=FALSE}
+mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounder.stan")
+```
+
+```{r}
+data_list_with_hidden_confounder <- list(L=L, D=D, x = knocker::x_train, N =N, y = knocker::y_train, m = knocker::m_train)
+```
+
+```{r}
+optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=data_list_with_hidden_confounder)
+```
+
+
+```{r}
+optim_fit_with_hidden_confounder$par[1:5] #estimated mu
+knocker::mu #real mu
+optim_fit_with_hidden_confounder$par[5006:5045] #estimated alpha
+knocker::alpha #real alpha
+optim_fit_with_hidden_confounder$par[5046:5053] #estimated beta
+knocker::beta #real beta
+```
+
+
+```{r}
+optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
+knocker::gamma #real gamma
+```
+
+It doesn't learn the parameters correctly when u is hidden except for beta. It learns beta perfectly well!
+
+## HMC in presecne of hidden confounder
+ 
+let's use hmc approach. The result of svi algorithm can be found in data folder, under the name of ```hmc_fit_with_hidden_confounder```.
+
+```{r}
+#hmc_fit_with_hidden_confounder <- rstan::sampling(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, chains = 2, iter = 2500, warmup = 1500, seed = seed)
+#usethis::use_data(hmc_fit_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "mu", knocker::hmc_fit_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "alpha", knocker::hmc_fit_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "beta", knocker::hmc_fit_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "gamma", knocker::hmc_fit_with_hidden_confounder)
+```
+
