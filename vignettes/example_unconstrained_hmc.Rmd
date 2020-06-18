@@ -59,7 +59,84 @@ For now we assume that $\Sigma_{YY|do(x)}$ is 1. If $\mu = 0$, then $P(Y | do(X 
 
 # Create data for U,X,Y and parameters
 
-The data for $U$, $X$, $M$, $Y$ and the parameters $\mu$, $\alpha$, $\beta$, and $\gamma$ can be found in the data folder, under the names of ```u_train```, ```x_train```, ```m_train```, ```y_train```, ```mu```, ```alpha```, ```beta```, and ```gamma``` respectively.
+The data for $U$, $X$, $M$, $Y$ and the parameters $\mu$, $\alpha$, $\beta$, and $\gamma$ can be found in the data folder, under the names of ```u_train```, ```x_train```, ```m_train```, ```y_train```, ```mu```, ```alpha```, ```beta```, and ```gamma``` respectively. For some reason, ```x_train``` and ```y_train``` didn't work for me, so I will include the whole data generating process here:
+
+```{r}
+f_u <- function(){
+  mu <- rnorm(L)
+  u <- matrix(0, nrow=D, ncol=L)
+  for(i in 1:D){
+    for(j in 1:L){
+      u[i, j] <- rnorm(1, mu[j])
+    }
+  }
+  return(list(u = u, mu = mu))
+}
+sim <- f_u()
+mu <- sim$mu
+u_train  <- sim$u
+
+f_x <- function(u){
+  alpha <- matrix(0, nrow = L, ncol = N) 
+  for(i in 1:L){
+    for(j in 1:N){
+      alpha[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = u %*% alpha
+  x <- matrix(0, nrow = D, ncol = N)
+  for(i in 1:D){
+    for(j in 1:N){
+      x[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(x = x, alpha = alpha))
+}
+sim_x <- f_x(u_train)
+alpha <- sim_x$alpha
+x_train  <- sim_x$x
+
+f_m <- function(x){
+  beta <- matrix(0, nrow = N, ncol = 1) 
+  for(i in 1:N){
+    for(j in 1:1){
+      beta[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = x %*% beta
+  m <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      m[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(m = m, beta = beta))
+}
+sim_m <- f_m(x_train)
+beta <- sim_m$beta
+m_train  <- sim_m$m
+
+f_y <- function(m,u){
+  gamma <- matrix(0, nrow = (L+1), ncol = 1) 
+  for(i in 1:(L+1)){
+    for(j in 1:1){
+      gamma[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  m_and_u <- cbind(m,u)
+  linear_exp = m_and_u %*% gamma
+  y <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      y[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(y = y, gamma = gamma))
+}
+sim_y <- f_y(m_train,u_train)
+gamma <- sim_y$gamma
+y_train  <- sim_y$y
+```
 
 # True distribution
 
@@ -69,9 +146,9 @@ Let's calculate the true mean of $P(Y | do(X = x))$ distribution,
 # generate x
 sigma_x = matrix(0, nrow = N, ncol = N)
 diag(sigma_x) <- 1
-x = mvtnorm::rmvnorm(n = 1, mean = knocker::mu %*% knocker::alpha, sigma = sigma_x)
+x = mvtnorm::rmvnorm(n = 1, mean = mu %*% alpha, sigma = sigma_x)
 #generate samples for y from P(Y | do(X = x))
-mean_y_given_do_x_alex = (t(matrix(c((x %*% knocker::beta), knocker::mu))) %*% knocker::gamma)
+mean_y_given_do_x_alex = (t(matrix(c((x %*% beta), mu))) %*% gamma)
 y_given_do_x_alex_samples = rnorm(1000,mean_y_given_do_x_alex,1)
 ```
 
@@ -96,11 +173,7 @@ mod <- rstan::stan_model("model_str.stan")
 We want to test the model using MLE 'optimizing', because it is faster than Bayesian inference:
 
 ```{r, message=FALSE, warning=FALSE}
-data_list <- list(u=knocker::u_train, L=L, D=D, x = knocker::x_train, N =N, m = knocker::m_train, y = knocker::y_train, m_and_u = cbind(knocker::m_train,knocker::u_train))
-```
-
-```{r}
-knocker::x_train
+data_list <- list(u=u_train, L=L, D=D, x = x_train, N =N, m = m_train, y = y_train, m_and_u = cbind(m_train,u_train))
 ```
 
 ```{r}
@@ -111,13 +184,13 @@ Let's compare the estimates of parameters with their actual values:
 
 ```{r}
 optim_fit$par[1:5] #estimated mu
-knocker::mu #real mu
+mu #real mu
 optim_fit$par[6:45] #estimated alpha
-knocker::alpha #real alpha
+alpha #real alpha
 optim_fit$par[46:53] #estimated beta
-knocker::beta #real beta
+beta #real beta
 optim_fit$par[54:59] #estimated gamma
-knocker::gamma #real gamma
+gamma #real gamma
 ```
 
 It seems like the parameters are closely estimated except for $\mu$. 
@@ -148,7 +221,7 @@ Now let's extract the samples:
 samples_mu <- extract(knocker::hmc_fit, "mu")
 colnames(samples_mu$mu) <- paste0("mu_", 1:L)
 colMeans(samples_mu$mu)
-knocker::mu
+mu
 ```
 
 ```{r}
@@ -163,19 +236,19 @@ samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
                                  colMeans(samples_alpha$alpha[,,8])),
                                byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
 samples_alpha_matrix
-knocker::alpha
+alpha
 ```
 
 ```{r}
 samples_beta <- extract(knocker::hmc_fit, "beta")
 colMeans(samples_beta$beta[,,1])
-knocker::beta
+beta
 ```
 
 ```{r}
 samples_gamma <- extract(knocker::hmc_fit, "gamma")
 colMeans(samples_gamma$gamma[,,1])
-knocker::gamma
+gamma
 ```
 
 # Estimating the parameters in presence of hidden confounder U
@@ -187,7 +260,7 @@ mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounde
 ```
 
 ```{r}
-data_list_with_hidden_confounder <- list(L=L, D=D, x = knocker::x_train, N =N, y = knocker::y_train, m = knocker::m_train)
+data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train, N =N, y = y_train, m = m_train)
 ```
 
 ## MLE optimizing approach with hidden confounder
@@ -199,17 +272,17 @@ optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=
 
 ```{r}
 optim_fit_with_hidden_confounder$par[1:5] #estimated mu
-knocker::mu #real mu
+mu #real mu
 optim_fit_with_hidden_confounder$par[5006:5045] #estimated alpha
-knocker::alpha #real alpha
+alpha #real alpha
 optim_fit_with_hidden_confounder$par[5046:5053] #estimated beta
-knocker::beta #real beta
+beta #real beta
 ```
 
 
 ```{r}
 optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
-knocker::gamma #real gamma
+gamma #real gamma
 ```
 
 It doesn't learn the parameters correctly when u is hidden except for beta. It learns beta perfectly well!
@@ -245,7 +318,7 @@ Now let's extract the samples:
 samples_mu <- extract(knocker::hmc_fit_with_hidden_confounder, "mu")
 colnames(samples_mu$mu) <- paste0("mu_", 1:L)
 colMeans(samples_mu$mu)
-knocker::mu
+mu
 ```
 
 ```{r}
@@ -260,13 +333,13 @@ samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
                                  colMeans(samples_alpha$alpha[,,8])),
                                byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
 samples_alpha_matrix
-knocker::alpha
+alpha
 ```
 
 ```{r}
 samples_beta <- extract(knocker::hmc_fit_with_hidden_confounder, "beta")
 colMeans(samples_beta$beta[,,1])
-knocker::beta
+beta
 ```
 
 Beta parameters are estimated correctly!
@@ -274,7 +347,7 @@ Beta parameters are estimated correctly!
 ```{r}
 samples_gamma <- extract(knocker::hmc_fit_with_hidden_confounder, "gamma")
 colMeans(samples_gamma$gamma[,,1])
-knocker::gamma
+gamma
 ```
 
 Tau (The first parameter of gamma) is estimated correctly. If we can show that by enforcing parameter independence we can learn gamma correctly then, this is a contribution!
