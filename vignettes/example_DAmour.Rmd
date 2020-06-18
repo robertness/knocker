@@ -48,13 +48,13 @@ $$ U \sim N(\mu,\Sigma_{UU}) \\
 X \sim N(\mu \alpha , \Sigma_{XX}) \\
 Y \sim N(\mu \alpha \beta + \mu \eta, \Sigma_{YY}) = N([\mu \alpha \text{   } \mu] \gamma, \Sigma_{YY})$$
 
-For now we assume that $\Sigma_{UU}$, $\Sigma_{XX}$, , and $\Sigma_{YY}$ are identity matrix. 
+For now we assume that $\Sigma_{UU}$, $\Sigma_{XX}$, and $\Sigma_{YY}$ are identity matrix. The dimensions of $\mu$, $\alpha$, and $\gamma$ are $1 \times L$, $L \times N$, and $L+N \times 1$ respectively.
 
 Let's calculate $P(Y | do(X = x))$:
 
-$$P(Y | do(X = x)) \sim N(x \beta + \mu \eta, 1) = N([x \text{   } \mu] \text{   } \gamma, 1)$$
+$$P(Y | do(X = x)) \sim N(x \beta + \mu \eta, \Sigma_{YY|do(x)}) = N([x \text{   } \mu] \text{   } \gamma, \Sigma_{YY|do(x)})$$
 
-If $\mu = 0$, then $P(Y | do(X = x))$ is fully parametrized by $\beta$ but if $\mu \neq 0$, then $P(Y | do(X = x))$ is parametrized by $\beta$, $\mu$ and $\eta$ or in other words by $\mu$ and $\gamma$.
+For now we assume that $\Sigma_{YY|do(x)}$ is 1. If $\mu = 0$, then $P(Y | do(X = x))$ is fully parametrized by $\beta$ but if $\mu \neq 0$, then $P(Y | do(X = x))$ is parametrized by $\beta$, $\mu$ and $\eta$ or in other words by $\mu$ and $\gamma$.
 
 # Create data for U,X,Y and parameters
 
@@ -116,6 +116,8 @@ sim_y <- f_y(x_train_alex,u_train_alex)
 gamma_alex <- sim_y$gamma
 y_train_alex  <- sim_y$y
 ```
+
+# True distribution
 
 Let's calculate the true mean of $P(Y | do(X = x))$ distribution,
 

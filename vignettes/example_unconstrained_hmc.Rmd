@@ -33,17 +33,77 @@ D = 1000
 N = 8
 ```
 
+We have a causal model that consists of four variables $U$, $X$, $M$ and $Y$ that have dimension of is $D \times L$, $D \times N$, $D \times 1$, and $D \times 1$ respectively. $U$ is a hidden confounder. Our causal model is as follows:
 
-Let's compile the model:
+
+$$ U := N_{U} \\
+X := U \alpha + N_{X} \\
+M := X \beta + N_{M} \\
+Y := M \tau + U \eta + N_{Y} = [M \text{  } U] [\tau \text{  } \eta]^T = [M \text{  } U] \gamma  + N_{Y}$$
+
+
+We assume that,
+
+$$ U \sim N(\mu,\Sigma_{UU}) \\
+X \sim N(\mu \alpha , \Sigma_{XX}) \\
+M \sim N(\mu \alpha \beta, \Sigma_{YY})
+Y \sim N(\mu \alpha \beta + \mu \eta, \Sigma_{YY}) = N([\mu \alpha \text{   } \mu] \gamma, \Sigma_{YY})$$
+
+For now we assume that $\Sigma_{UU}$, $\Sigma_{XX}$, $\Sigma_{MM}$ , and $\Sigma_{YY}$ are identity matrix. The dimensions of $\mu$, $\alpha$, $\beta$, and $\gamma$ are $1 \times L$, $L \times N$, $N \times 1$, and $L+1 \times 1$ respectively.
+
+Let's calculate $P(Y | do(X = x))$:
+
+$$P(Y | do(X = x)) \sim N(x \beta \tau + \mu \eta, \Sigma_{YY|do(x)}) = N([x \beta \text{   } \mu] \text{   } \gamma, \Sigma_{YY|do(x)})$$
+
+For now we assume that $\Sigma_{YY|do(x)}$ is 1. If $\mu = 0$, then $P(Y | do(X = x))$ is fully parametrized by $\beta$ and $\tau$, but if $\mu \neq 0$, then $P(Y | do(X = x))$ is parametrized by $\beta$, $\tau$, $\mu$ and $\eta$ or in other words by $\beta$, $\mu$ and $\gamma$.
+
+# Create data for U,X,Y and parameters
+
+The data for $U$, $X$, $M$, $Y$ and the parameters $\mu$, $\alpha$, $\beta$, and $\gamma$ can be found in the data folder, under the names of ```u_train```, ```x_train```, ```m_train```, ```y_train```, ```mu```, ```alpha```, ```beta```, and ```gamma``` respectively.
+
+# True distribution
+
+Let's calculate the true mean of $P(Y | do(X = x))$ distribution,
+
+```{r}
+# generate x
+sigma_x = matrix(0, nrow = N, ncol = N)
+diag(sigma_x) <- 1
+x = mvtnorm::rmvnorm(n = 1, mean = knocker::mu %*% knocker::alpha, sigma = sigma_x)
+#generate samples for y from P(Y | do(X = x))
+mean_y_given_do_x_alex = (t(matrix(c((x %*% knocker::beta), knocker::mu))) %*% knocker::gamma)
+y_given_do_x_alex_samples = rnorm(1000,mean_y_given_do_x_alex,1)
+```
+
+### Plot distribution of $P(Y | do(X = x))$
+
+```{r}
+hist(y_given_do_x_alex_samples, main = "true distribution of P(Y|do(X = x))") #change to ggplot2
+```
+
+# Estimating the parameters of model when there is no hidden confounder
+
+## Stan model
+
+The Stan model can be found in vignette under the name of ```model_str```. Let's compile the model:
 
 ```{r, message=FALSE, warning=FALSE}
 mod <- rstan::stan_model("model_str.stan")
 ```
 
+## MLE optimizing approach without hidden confounder
+
 We want to test the model using MLE 'optimizing', because it is faster than Bayesian inference:
 
 ```{r, message=FALSE, warning=FALSE}
 data_list <- list(u=knocker::u_train, L=L, D=D, x = knocker::x_train, N =N, m = knocker::m_train, y = knocker::y_train, m_and_u = cbind(knocker::m_train,knocker::u_train))
+```
+
+```{r}
+knocker::x_train
+```
+
+```{r}
 optim_fit <- optimizing(mod, data=data_list)
 ```
 
@@ -60,7 +120,11 @@ optim_fit$par[54:59] #estimated gamma
 knocker::gamma #real gamma
 ```
 
-It seems like the parameters are closely estimated except for $\mu$. Now we will proceed with HMC inference. ```hmc_fit``` is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+It seems like the parameters are closely estimated except for $\mu$. 
+
+## HMC without hidden confounders
+
+Now we will proceed with HMC inference. ```hmc_fit``` is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
 
 ```{r fig.height=8, fig.width=8}
 stan_trace(pars = "mu", knocker::hmc_fit)
@@ -83,34 +147,40 @@ Now let's extract the samples:
 ```{r}
 samples_mu <- extract(knocker::hmc_fit, "mu")
 colnames(samples_mu$mu) <- paste0("mu_", 1:L)
-summary(samples_mu$mu)
+colMeans(samples_mu$mu)
 knocker::mu
 ```
 
 ```{r}
-#It doesn't work!
-# samples_alpha <- extract(knocker::hmc_fit, "alpha")
-# summary(samples_alpha$alpha)
-# knocker::alpha
+samples_alpha <- extract(knocker::hmc_fit, "alpha")
+samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
+                                 colMeans(samples_alpha$alpha[,,2]),
+                                 colMeans(samples_alpha$alpha[,,3]),
+                                 colMeans(samples_alpha$alpha[,,4]),
+                                 colMeans(samples_alpha$alpha[,,5]),
+                                 colMeans(samples_alpha$alpha[,,6]),
+                                 colMeans(samples_alpha$alpha[,,7]),
+                                 colMeans(samples_alpha$alpha[,,8])),
+                               byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
+samples_alpha_matrix
+knocker::alpha
 ```
 
 ```{r}
-#It doesn't work!
-#samples_beta <- extract(knocker::hmc_fit, "beta")
-# colnames(samples_beta$beta) <- paste0("beta_", 1:N)
-#summary(samples_beta$beta)
-#knocker::beta
+samples_beta <- extract(knocker::hmc_fit, "beta")
+colMeans(samples_beta$beta[,,1])
+knocker::beta
 ```
 
 ```{r}
-#It doesn't work!
-#samples_gamma <- extract(knocker::hmc_fit, "gamma")
-#colnames(samples_gamma$gamma) <- paste0("gamma_", 1:(L+1))
-#summary(samples_gamma$gamma)
-#knocker::gamma
+samples_gamma <- extract(knocker::hmc_fit, "gamma")
+colMeans(samples_gamma$gamma[,,1])
+knocker::gamma
 ```
 
 # Estimating the parameters in presence of hidden confounder U
+
+The Stan model is in vignette under the name of ```model_str_with_latent_confounder.stan```. Let's complie the model:
 
 ```{r, message=FALSE, warning=FALSE}
 mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounder.stan")
@@ -119,6 +189,8 @@ mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounde
 ```{r}
 data_list_with_hidden_confounder <- list(L=L, D=D, x = knocker::x_train, N =N, y = knocker::y_train, m = knocker::m_train)
 ```
+
+## MLE optimizing approach with hidden confounder
 
 ```{r}
 optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=data_list_with_hidden_confounder)
@@ -167,3 +239,42 @@ stan_trace(pars = "beta", knocker::hmc_fit_with_hidden_confounder)
 stan_trace(pars = "gamma", knocker::hmc_fit_with_hidden_confounder)
 ```
 
+Now let's extract the samples:
+
+```{r}
+samples_mu <- extract(knocker::hmc_fit_with_hidden_confounder, "mu")
+colnames(samples_mu$mu) <- paste0("mu_", 1:L)
+colMeans(samples_mu$mu)
+knocker::mu
+```
+
+```{r}
+samples_alpha <- extract(knocker::hmc_fit_with_hidden_confounder, "alpha")
+samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
+                                 colMeans(samples_alpha$alpha[,,2]),
+                                 colMeans(samples_alpha$alpha[,,3]),
+                                 colMeans(samples_alpha$alpha[,,4]),
+                                 colMeans(samples_alpha$alpha[,,5]),
+                                 colMeans(samples_alpha$alpha[,,6]),
+                                 colMeans(samples_alpha$alpha[,,7]),
+                                 colMeans(samples_alpha$alpha[,,8])),
+                               byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
+samples_alpha_matrix
+knocker::alpha
+```
+
+```{r}
+samples_beta <- extract(knocker::hmc_fit_with_hidden_confounder, "beta")
+colMeans(samples_beta$beta[,,1])
+knocker::beta
+```
+
+Beta parameters are estimated correctly!
+
+```{r}
+samples_gamma <- extract(knocker::hmc_fit_with_hidden_confounder, "gamma")
+colMeans(samples_gamma$gamma[,,1])
+knocker::gamma
+```
+
+Tau (The first parameter of gamma) is estimated correctly. If we can show that by enforcing parameter independence we can learn gamma correctly then, this is a contribution!
