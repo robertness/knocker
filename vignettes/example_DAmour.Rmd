@@ -16,11 +16,12 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
 library(purrr)
 library(rstan)
 library(bayesplot)
 library(ggplot2)
+library(mvtnorm)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 ```
@@ -28,10 +29,34 @@ rstan_options(auto_write = TRUE)
 ```{r}
 seed = 234
 set.seed(seed)
-L = 5
-D = 1000
-N = 8
+L = 5 #number of latent variables
+D = 1000 #number of data points
+N = 8 #number of causes
 ``` 
+
+We have a causal model that consists of three variables $U$, $X$, and $Y$ that have dimension of is $D \times L$, $D \times N$, and $D \times 1$ respectively. $U$ is a hidden confounder. Our causal model is as follows:
+
+
+$$ U := N_{U} \\
+X := U \alpha + N_{X} \\
+Y := X \beta + U \eta + N_{Y} = [X \text{  } U] [\beta \text{  } \eta]^T = [X \text{  } U] \gamma  + N_{Y}$$
+
+
+We assume that,
+
+$$ U \sim N(\mu,\Sigma_{UU}) \\
+X \sim N(\mu \alpha , \Sigma_{XX}) \\
+Y \sim N(\mu \alpha \beta + \mu \eta, \Sigma_{YY}) = N([\mu \alpha \text{   } \mu] \gamma, \Sigma_{YY})$$
+
+For now we assume that $\Sigma_{UU}$, $\Sigma_{XX}$, , and $\Sigma_{YY}$ are identity matrix. 
+
+Let's calculate $P(Y | do(X = x))$:
+
+$$P(Y | do(X = x)) \sim N(x \beta + \mu \eta, 1) = N([x \text{   } \mu] \text{   } \gamma, 1)$$
+
+If $\mu = 0$, then $P(Y | do(X = x))$ is fully parametrized by $\beta$ but if $\mu \neq 0$, then $P(Y | do(X = x))$ is parametrized by $\beta$, $\mu$ and $\eta$ or in other words by $\mu$ and $\gamma$.
+
+# Create data for U,X,Y and parameters
 
 ```f_u```, ```f_x```, and ```f_y``` are functions that generate data for u,x, and y and output the parameters associated with each variable which are $\mu$, $\alpha$, and $\gamma$ respectively.
 
@@ -92,7 +117,28 @@ gamma_alex <- sim_y$gamma
 y_train_alex  <- sim_y$y
 ```
 
+Let's calculate the true mean of $P(Y | do(X = x))$ distribution,
 
+```{r}
+# generate x
+sigma_x_alex = matrix(0, nrow = N, ncol = N)
+diag(sigma_x_alex) <- 1
+x = mvtnorm::rmvnorm(n = 1, mean = mu_alex %*% alpha_alex, sigma = sigma_x_alex)
+
+#generate samples for y from P(Y | do(X = x))
+mean_y_given_do_x_alex = (t(matrix(c(x, mu_alex))) %*% gamma_alex)
+y_given_do_x_alex_samples = rnorm(1000,mean_y_given_do_x_alex,1)
+```
+
+### Plot distribution of $P(Y | do(X = x))$
+
+```{r}
+hist(y_given_do_x_alex_samples, main = "true distribution of P(Y|do(X = x))") #change to ggplot2
+```
+
+# Estimating the parameters of model when there is no hidden confounder
+
+## Stan model
 The Stan model is a string and it specifies the data, parameters, and model.
 
 ```{r}
@@ -142,10 +188,15 @@ Let's compile the model:
 mod <- stan_model(model_code = model_str)
 ```
 
+## MLE optimizing approach without hidden confounder
+
 We want to test the model using MLE 'optimizing', because it is faster than Bayesian inference:
 
 ```{r}
 data_list <- list(u=u_train_alex, L=L, D=D, x = x_train_alex, N =N, y = y_train_alex, x_and_u = cbind(x_train_alex,u_train_alex))
+```
+
+```{r}
 optim_fit <- optimizing(mod, data=data_list)
 ```
 
@@ -160,14 +211,13 @@ optim_fit$par[46:58] #estimated gamma
 gamma_alex #real gamma
 ```
 
-Some of the gamma parameters are not estmated correctly. Other than that, the rest of parameters are closely estimated. Let's try HMC and SVI. The result of running SVI when we don't have a hidden confounder is in data folder, under the name ```vb_fit_alex_without_hidden_confounder```. The result of running HMC when we don't have a hidden confounder is in data folder, under the name ```hmc_fit_alex_without_hidden_confounder```. It is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+gamma_9,...,gamma_13 parameters are not estmated correctly. These are essentially our eta parameters. Other than that, the rest of parameters are closely estimated. Let's try HMC and SVI. The result of running SVI when we don't have a hidden confounder is in data folder, under the name ```vb_fit_alex_without_hidden_confounder```. The result of running HMC when we don't have a hidden confounder is in data folder, under the name ```hmc_fit_alex_without_hidden_confounder```. It is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+
+## SVI without hidden confounder
 
 ```{r, echo=FALSE, results = FALSE}
 #vb_fit_alex_without_hidden_confounder <- rstan::vb(mod, data=data_list, seed = seed)
 #usethis::use_data(vb_fit_alex_without_hidden_confounder)
-
-#hmc_fit_alex_without_hidden_confounder <- rstan::sampling(mod, data=data_list,chains = 2, iter = 2000, warmup = 1000, seed = seed)
-#usethis::use_data(hmc_fit_alex_without_hidden_confounder)
 ```
 
 ```{r}
@@ -184,12 +234,66 @@ summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][46:58]
 gamma_alex #real gamma
 ```
 
-Again, some of the gamma parameters are not estimated correctly.
+Again, gamma_9,...,gamma_13 parameters are not estmated correctly. These are essentially our eta parameters. Other than that, the rest of parameters are closely estimated.
+
+## HMC without hidden confounders
+
+```{r}
+#I added max_treedepth if I want to run this algorithm once again, because I recieved this warning: "There were 2000 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10."
+
+#hmc_fit_alex_without_hidden_confounder <- rstan::sampling(mod, data=data_list,chains = 2, iter = 2000, warmup = 1000, seed = seed, control = list(max_treedepth = 15)) 
+#usethis::use_data(hmc_fit_alex_without_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "mu", knocker::hmc_fit_alex_without_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "alpha", knocker::hmc_fit_alex_without_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "gamma", knocker::hmc_fit_alex_without_hidden_confounder)
+```
+
+Now let's extract the samples:
+
+```{r}
+samples_mu <- extract(knocker::hmc_fit_alex_without_hidden_confounder, "mu")
+colnames(samples_mu$mu) <- paste0("mu_", 1:L)
+colMeans(samples_mu$mu)
+mu_alex
+```
+
+```{r}
+samples_alpha <- extract(knocker::hmc_fit_alex_without_hidden_confounder, "alpha")
+dim(samples_alpha$alpha)
+samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
+                                 colMeans(samples_alpha$alpha[,,2]),
+                                 colMeans(samples_alpha$alpha[,,3]),
+                                 colMeans(samples_alpha$alpha[,,4]),
+                                 colMeans(samples_alpha$alpha[,,5]),
+                                 colMeans(samples_alpha$alpha[,,6]),
+                                 colMeans(samples_alpha$alpha[,,7]),
+                                 colMeans(samples_alpha$alpha[,,8])),
+                               byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
+samples_alpha_matrix
+alpha_alex
+```
+
+```{r}
+samples_gamma <- extract(knocker::hmc_fit_alex_without_hidden_confounder, "gamma")
+colMeans(samples_gamma$gamma[,,1])
+gamma_alex
+```
+
+It learns all the parameters correctly except for gamma_9,...,gamma_13, which are essentially the eta parameter.
 
 # Estimating the parameters in presence of hidden confounder U
 
 ```{r}
-model_str_with_hidden_confounder <- "
+model_str_alex_with_hidden_confounder <- "
     data {
         int L;
         int D;
@@ -233,15 +337,17 @@ model_str_with_hidden_confounder <- "
 Let's compile the model:
 
 ```{r, message=FALSE, warning=FALSE, results=FALSE}
-mod_with_hidden_confounder <- stan_model(model_code = model_str_with_hidden_confounder)
+mod_alex_with_hidden_confounder <- stan_model(model_code = model_str_alex_with_hidden_confounder)
 ```
 
 ```{r}
-data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train_alex, N =N, y = y_train_alex)
+data_list_alex_with_hidden_confounder <- list(L=L, D=D, x = x_train_alex, N =N, y = y_train_alex)
 ```
 
+## MLE optimizing approach with hidden confounder
+
 ```{r}
-optim_fit_with_hidden_confounder <- optimizing(mod_with_hidden_confounder, data=data_list_with_hidden_confounder)
+optim_fit_with_hidden_confounder <- optimizing(mod_alex_with_hidden_confounder, data=data_list_alex_with_hidden_confounder)
 ```
 
 
@@ -256,14 +362,14 @@ optim_fit_with_hidden_confounder$par[5046:5058] #estimated gamma
 gamma_alex #real gamma
 ```
 
-It doesn't learn the parameters correctly when u is hidden.
+It doesn't learn the parameters correctly when u is hidden except for gamma1,...,gamma8.
 
-##SVI in presecne of hidden confounder
+## SVI in presecne of hidden confounder
  
 let's use svi approach:
 
 ```{r}
-#vb_fit_alex_with_hidden_confounder <- rstan::vb(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, seed = seed)
+#vb_fit_alex_with_hidden_confounder <- rstan::vb(mod_alex_with_hidden_confounder, data=data_list_alex_with_hidden_confounder, seed = seed)
 #usethis::use_data(vb_fit_alex_with_hidden_confounder)
 ```
 
@@ -282,10 +388,56 @@ summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][5046:5058]
 gamma_alex #real gamma
 ```
 
-##HMC in presecne of hidden confounder
+It doesn't learn the parameters correctly when u is hidden.
+
+## HMC in presecne of hidden confounder
 
 ```{r}
-#hmc_fit_alex_with_hidden_confounder <- rstan::sampling(mod_with_hidden_confounder, data=data_list_with_hidden_confounder, chains = 2, iter = 2500, warmup = 1500, seed = seed)
+#hmc_fit_alex_with_hidden_confounder <- rstan::sampling(mod_alex_with_hidden_confounder, data=data_list_alex_with_hidden_confounder, chains = 2, iter = 2500, warmup = 1500, seed = seed,control = list(max_treedepth = 15)) #I added max_treedepth = 15, if I want to run this once again
 #usethis::use_data(hmc_fit_alex_with_hidden_confounder)
 ```
 
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "mu", knocker::hmc_fit_alex_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "alpha", knocker::hmc_fit_alex_with_hidden_confounder)
+```
+
+```{r fig.height=8, fig.width=8}
+stan_trace(pars = "gamma", knocker::hmc_fit_alex_with_hidden_confounder)
+```
+
+Now let's extract the samples:
+
+```{r}
+samples_mu <- extract(knocker::hmc_fit_alex_with_hidden_confounder, "mu")
+colnames(samples_mu$mu) <- paste0("mu_", 1:L)
+colMeans(samples_mu$mu)
+mu_alex
+```
+
+```{r}
+samples_alpha <- extract(knocker::hmc_fit_alex_with_hidden_confounder, "alpha")
+dim(samples_alpha$alpha)
+samples_alpha_matrix <- matrix(c(colMeans(samples_alpha$alpha[,,1]),
+                                 colMeans(samples_alpha$alpha[,,2]),
+                                 colMeans(samples_alpha$alpha[,,3]),
+                                 colMeans(samples_alpha$alpha[,,4]),
+                                 colMeans(samples_alpha$alpha[,,5]),
+                                 colMeans(samples_alpha$alpha[,,6]),
+                                 colMeans(samples_alpha$alpha[,,7]),
+                                 colMeans(samples_alpha$alpha[,,8])),
+                               byrow = FALSE, nrow = 5, ncol = 8, dimnames = list(paste0("alpha_", 1:L), paste0("alpha_", 1:N)))
+samples_alpha_matrix
+alpha_alex
+```
+
+```{r}
+samples_gamma <- extract(knocker::hmc_fit_alex_with_hidden_confounder, "gamma")
+colMeans(samples_gamma$gamma[,,1])
+gamma_alex
+```
+
+It doesn't learn the parameters correctly except for the first 8 parameters of $\gamma$, which are essentially $\beta$ parameters!
