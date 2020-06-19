@@ -61,7 +61,7 @@ For now we assume that $\Sigma_{YY|do(x)}$ is 1. If $\mu = 0$, then $P(Y | do(X 
 
 The data for $U$, $X$, $M$, $Y$ and the parameters $\mu$, $\alpha$, $\beta$, and $\gamma$ can be found in the data folder, under the names of ```u_train```, ```x_train```, ```m_train```, ```y_train```, ```mu```, ```alpha```, ```beta```, and ```gamma``` respectively. For some reason, ```x_train``` and ```y_train``` didn't work for me, so I will include the whole data generating process here:
 
-```{r}
+```{r, echo=FALSE}
 f_u <- function(){
   mu <- rnorm(L)
   u <- matrix(0, nrow=D, ncol=L)
@@ -177,7 +177,7 @@ data_list <- list(u=u_train, L=L, D=D, x = x_train, N =N, m = m_train, y = y_tra
 ```
 
 ```{r}
-optim_fit <- optimizing(mod, data=data_list)
+optim_fit <- rstan::optimizing(mod, data=data_list)
 ```
 
 Let's compare the estimates of parameters with their actual values:
@@ -186,14 +186,14 @@ Let's compare the estimates of parameters with their actual values:
 optim_fit$par[1:5] #estimated mu
 mu #real mu
 optim_fit$par[6:45] #estimated alpha
-alpha #real alpha
+t(alpha) #real alpha
 optim_fit$par[46:53] #estimated beta
-beta #real beta
+t(beta) #real beta
 optim_fit$par[54:59] #estimated gamma
-gamma #real gamma
+t(gamma) #real gamma
 ```
 
-It seems like the parameters are closely estimated except for $\mu$. 
+It seems like the parameters are closely estimated except for $\mu$ and $\gamma$. 
 
 ## HMC without hidden confounders
 
@@ -251,6 +251,8 @@ colMeans(samples_gamma$gamma[,,1])
 gamma
 ```
 
+It doesn't learn $\mu$ correctly and some of the $\gamma$ parameters.
+
 # Estimating the parameters in presence of hidden confounder U
 
 The Stan model is in vignette under the name of ```model_str_with_latent_confounder.stan```. Let's complie the model:
@@ -285,7 +287,7 @@ optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
 gamma #real gamma
 ```
 
-It doesn't learn the parameters correctly when u is hidden except for beta. It learns beta perfectly well!
+It doesn't learn the parameters correctly when u is hidden except for beta and first parameter of gamma which is basically tau. It learns beta and tau perfectly well!
 
 ## HMC in presecne of hidden confounder
  
@@ -342,7 +344,6 @@ colMeans(samples_beta$beta[,,1])
 beta
 ```
 
-Beta parameters are estimated correctly!
 
 ```{r}
 samples_gamma <- extract(knocker::hmc_fit_with_hidden_confounder, "gamma")
@@ -350,4 +351,4 @@ colMeans(samples_gamma$gamma[,,1])
 gamma
 ```
 
-Tau (The first parameter of gamma) is estimated correctly. If we can show that by enforcing parameter independence we can learn gamma correctly then, this is a contribution!
+Beta parameters are estimated correctly! Tau (The first parameter of gamma) is estimated correctly. If we can show that by enforcing parameter independence we can learn gamma correctly then, this is a contribution!

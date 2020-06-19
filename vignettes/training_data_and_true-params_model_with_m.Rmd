@@ -59,10 +59,7 @@ f_x <- function(u){
 sim_x <- f_x(u_train)
 alpha <- sim_x$alpha
 x_train  <- sim_x$x
-<<<<<<< HEAD
 
-=======
->>>>>>> e126e16509ef92e649159844d6b26b587ac8458f
 f_m <- function(x){
   beta <- matrix(0, nrow = N, ncol = 1) 
   for(i in 1:N){
@@ -82,10 +79,7 @@ f_m <- function(x){
 sim_m <- f_m(x_train)
 beta <- sim_m$beta
 m_train  <- sim_m$m
-<<<<<<< HEAD
 
-=======
->>>>>>> e126e16509ef92e649159844d6b26b587ac8458f
 f_y <- function(m,u){
   gamma <- matrix(0, nrow = (L+1), ncol = 1) 
   for(i in 1:(L+1)){
@@ -108,13 +102,8 @@ gamma <- sim_y$gamma
 y_train  <- sim_y$y
 ```
 
-<<<<<<< HEAD
-
 ```{r}
 usethis::use_data(mu,u_train,alpha,x_train,beta,m_train,gamma,y_train)
-=======
-```{r}
-#usethis::use_data(mu,u_train,alpha,x_train,beta,m_train,gamma,y_train,L,D,N)
->>>>>>> e126e16509ef92e649159844d6b26b587ac8458f
+
 ```
 

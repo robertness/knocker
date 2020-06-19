@@ -34,11 +34,142 @@ D = 1000
 N = 8
 ```
 
-Let's compile the model:
+We have a causal model that consists of four variables $U$, $X$, $M$ and $Y$ that have dimension of is $D \times L$, $D \times N$, $D \times 1$, and $D \times 1$ respectively. $U$ is a hidden confounder. Our causal model is as follows:
+
+
+$$ U := N_{U} \\
+X := U \alpha + N_{X} \\
+M := X \beta + N_{M} \\
+Y := M \tau + U \eta + N_{Y} = [M \text{  } U] [\tau \text{  } \eta]^T = [M \text{  } U] \gamma  + N_{Y}$$
+
+
+We assume that,
+
+$$ U \sim N(\mu,\Sigma_{UU}) \\
+X \sim N(\mu \alpha , \Sigma_{XX}) \\
+M \sim N(\mu \alpha \beta, \Sigma_{YY})
+Y \sim N(\mu \alpha \beta + \mu \eta, \Sigma_{YY}) = N([\mu \alpha \text{   } \mu] \gamma, \Sigma_{YY})$$
+
+For now we assume that $\Sigma_{UU}$, $\Sigma_{XX}$, $\Sigma_{MM}$ , and $\Sigma_{YY}$ are identity matrix. The dimensions of $\mu$, $\alpha$, $\beta$, and $\gamma$ are $1 \times L$, $L \times N$, $N \times 1$, and $L+1 \times 1$ respectively.
+
+Let's calculate $P(Y | do(X = x))$:
+
+$$P(Y | do(X = x)) \sim N(x \beta \tau + \mu \eta, \Sigma_{YY|do(x)}) = N([x \beta \text{   } \mu] \text{   } \gamma, \Sigma_{YY|do(x)})$$
+
+For now we assume that $\Sigma_{YY|do(x)}$ is 1. If $\mu = 0$, then $P(Y | do(X = x))$ is fully parametrized by $\beta$ and $\tau$, but if $\mu \neq 0$, then $P(Y | do(X = x))$ is parametrized by $\beta$, $\tau$, $\mu$ and $\eta$ or in other words by $\beta$, $\mu$ and $\gamma$.
+
+# Create data for U,X,Y and parameters
+
+The data for $U$, $X$, $M$, $Y$ and the parameters $\mu$, $\alpha$, $\beta$, and $\gamma$ can be found in the data folder, under the names of ```u_train```, ```x_train```, ```m_train```, ```y_train```, ```mu```, ```alpha```, ```beta```, and ```gamma``` respectively. For some reason, ```x_train``` and ```y_train``` didn't work for me, so I will include the whole data generating process here:
+
+```{r, echo=FALSE}
+f_u <- function(){
+  mu <- rnorm(L)
+  u <- matrix(0, nrow=D, ncol=L)
+  for(i in 1:D){
+    for(j in 1:L){
+      u[i, j] <- rnorm(1, mu[j])
+    }
+  }
+  return(list(u = u, mu = mu))
+}
+sim <- f_u()
+mu <- sim$mu
+u_train  <- sim$u
+
+f_x <- function(u){
+  alpha <- matrix(0, nrow = L, ncol = N) 
+  for(i in 1:L){
+    for(j in 1:N){
+      alpha[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = u %*% alpha
+  x <- matrix(0, nrow = D, ncol = N)
+  for(i in 1:D){
+    for(j in 1:N){
+      x[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(x = x, alpha = alpha))
+}
+sim_x <- f_x(u_train)
+alpha <- sim_x$alpha
+x_train  <- sim_x$x
+
+f_m <- function(x){
+  beta <- matrix(0, nrow = N, ncol = 1) 
+  for(i in 1:N){
+    for(j in 1:1){
+      beta[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  linear_exp = x %*% beta
+  m <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      m[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(m = m, beta = beta))
+}
+sim_m <- f_m(x_train)
+beta <- sim_m$beta
+m_train  <- sim_m$m
+
+f_y <- function(m,u){
+  gamma <- matrix(0, nrow = (L+1), ncol = 1) 
+  for(i in 1:(L+1)){
+    for(j in 1:1){
+      gamma[i, j] <- rnorm(1, 0, 10)
+    }
+  }
+  m_and_u <- cbind(m,u)
+  linear_exp = m_and_u %*% gamma
+  y <- matrix(0, nrow = D, ncol = 1)
+  for(i in 1:D){
+    for(j in 1:1){
+      y[i, j] <- rnorm(1, linear_exp[i,j],1)
+    }
+  }
+  return(list(y = y, gamma = gamma))
+}
+sim_y <- f_y(m_train,u_train)
+gamma <- sim_y$gamma
+y_train  <- sim_y$y
+```
+
+# True distribution
+
+Let's calculate the true mean of $P(Y | do(X = x))$ distribution,
+
+```{r}
+# generate x
+sigma_x = matrix(0, nrow = N, ncol = N)
+diag(sigma_x) <- 1
+x = mvtnorm::rmvnorm(n = 1, mean = knocker::mu %*% knocker::alpha, sigma = sigma_x)
+#generate samples for y from P(Y | do(X = x))
+mean_y_given_do_x_alex = (t(matrix(c((x %*% knocker::beta), knocker::mu))) %*% knocker::gamma)
+y_given_do_x_alex_samples = rnorm(1000,mean_y_given_do_x_alex,1)
+```
+
+### Plot distribution of $P(Y | do(X = x))$
+
+```{r}
+hist(y_given_do_x_alex_samples, main = "true distribution of P(Y|do(X = x))") #change to ggplot2
+```
+
+# Estimating the parameters of model when there is no hidden confounder
+
+## Stan model
+
+The Stan model can be found in vignette under the name of ```model_str```. Let's compile the model:
 
 ```{r, message=FALSE, warning=FALSE}
 mod <- rstan::stan_model("model_str.stan")
 ```
+
+## SVI without hidden confounders
 
 Let's use the SVI algorithm (rstan::vb()) to learn the parameters. The result of running the SVI algorithm is stored as vb_fit.rda in data folder.
 ```{r}
@@ -55,16 +186,18 @@ summary(knocker::vb_fit)$summary[, "mean"][(L+(L*N)+N+1):(L+(L*N)+N+L+1)]
 knocker::gamma
 ```
 
-Doesn't predict gamma well.
+Doesn't predict gamma well except for the first parameter of gamma which is essentially tau.
 
 # Estimating the parameters in presence of hidden confounder U
+
+## MLE approach
 
 ```{r, message=FALSE, warning=FALSE}
 mod_with_hidden_confounder <- rstan::stan_model("model_str_with_latent_confounder.stan")
 ```
 
 ```{r}
-data_list_with_hidden_confounder <- list(L=L, D=D, x = knocker::x_train, N =N, y = knocker::y_train, m = knocker::m_train)
+data_list_with_hidden_confounder <- list(L=L, D=D, x = x_train, N =N, y = y_train, m = m_train)
 ```
 
 ```{r}
@@ -83,9 +216,9 @@ optim_fit_with_hidden_confounder$par[5054:5059] #estimated gamma
 knocker::gamma #real gamma
 ```
 
-It doesn't learn the parameters correctly when u is hidden.
+It doesn't learn the parameters correctly when u is hidden except for beta and first parameter of Gamma which is tau.
 
-## SVI in presecne of hidden confounder
+## SVI approach in presecne of hidden confounder
  
 let's use svi approach. The result of svi algorithm can be found in data folder, under the name of ```vb_fit_with_hidden_confounder```.
 
@@ -109,9 +242,9 @@ summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][5046:5053]
 knocker::beta #real beta
 ```
 
-It can learn the beta parameters perfectly well!
-
 ```{r}
 summary(knocker::vb_fit_with_hidden_confounder)$summary[,"mean"][5054:5059]
 knocker::gamma #real gamma
 ```
+
+It can learn the beta parameters perfectly well and the first parameter of Gamma which is tau.
