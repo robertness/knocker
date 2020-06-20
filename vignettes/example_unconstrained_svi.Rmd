@@ -175,7 +175,7 @@ mod <- rstan::stan_model("model_str.stan")
 
 ## SVI without hidden confounders
 
-Let's use the SVI algorithm (rstan::vb()) to learn the parameters. The result of running the SVI algorithm is stored as ```vb_fit.rda``` in data folder.
+Let's use the SVI algorithm (rstan::vb()) to learn the parameters. The result of running the SVI algorithm is stored as vb_fit.rda in data folder.
 
 ```{r}
 summary(knocker::vb_fit)$summary[, "mean"][1:L]
@@ -190,6 +190,7 @@ t(knocker::beta)
 summary(knocker::vb_fit)$summary[, "mean"][(L+(L*N)+N+1):(L+(L*N)+N+L+1)]
 t(knocker::gamma)
 ```
+
 Doesn't predict gamma well except for the first parameter of gamma which is essentially tau.
 
 # Estimating the parameters in presence of hidden confounder U
