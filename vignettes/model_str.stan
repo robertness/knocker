@@ -51,10 +51,10 @@ model {
     target += normal_lpdf(beta[j, ] | 0, 1);
   }
   for (j in 1:(L+1)){
-    target += normal_lpdf(gamma[j, ] | 0, 1);
+    target += normal_lpdf(gamma[j, ] | 0, 10);
   }
   for (i in 1:D){
-    target += normal_lpdf(u[i, ] | mu, 10);      // likelihood
+    target += normal_lpdf(u[i, ] | mu, 1);      // likelihood
     target += normal_lpdf(x[i, ] | x_loc[i, ], 1);
     target += normal_lpdf(m[i, ] | m_loc[i, ], 1);
     target += normal_lpdf(y[i, ] | y_loc[i, ], 1);

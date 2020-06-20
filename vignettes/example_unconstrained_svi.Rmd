@@ -169,9 +169,14 @@ The Stan model can be found in vignette under the name of ```model_str```. Let's
 mod <- rstan::stan_model("model_str.stan")
 ```
 
+```{r}
+#vb_fit <- rstan::vb(mod, data = list(L=L, D=D, x = x_train, N =N, y = y_train, m = m_train, u = u_train, m_and_u = cbind(m_train,u_train)), seed = seed)
+```
+
 ## SVI without hidden confounders
 
-Let's use the SVI algorithm (rstan::vb()) to learn the parameters. The result of running the SVI algorithm is stored as vb_fit.rda in data folder.
+Let's use the SVI algorithm (rstan::vb()) to learn the parameters. The result of running the SVI algorithm is stored as ```vb_fit.rda``` in data folder.
+
 ```{r}
 summary(knocker::vb_fit)$summary[, "mean"][1:L]
 knocker::mu
@@ -180,12 +185,11 @@ summary(knocker::vb_fit)$summary[, "mean"][(L+1):(L+(L*N))]
 knocker::alpha
 
 summary(knocker::vb_fit)$summary[, "mean"][(L+(L*N)+1):(L+(L*N)+N)]
-knocker::beta
+t(knocker::beta)
 
 summary(knocker::vb_fit)$summary[, "mean"][(L+(L*N)+N+1):(L+(L*N)+N+L+1)]
-knocker::gamma
+t(knocker::gamma)
 ```
-
 Doesn't predict gamma well except for the first parameter of gamma which is essentially tau.
 
 # Estimating the parameters in presence of hidden confounder U

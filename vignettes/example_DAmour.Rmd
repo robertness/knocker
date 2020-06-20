@@ -22,6 +22,7 @@ library(rstan)
 library(bayesplot)
 library(ggplot2)
 library(mvtnorm)
+library(parallel)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 ```
@@ -173,10 +174,10 @@ model_str <- "
             target += normal_lpdf(alpha[j, ] | 0, 1);
         }
         for (j in 1:(L+N)){
-            target += normal_lpdf(gamma[j, ] | 0, 1);
+            target += normal_lpdf(gamma[j, ] | 0, 10);
         }
         for (i in 1:D){
-             target += normal_lpdf(u[i, ] | mu, 10);      // likelihood
+             target += normal_lpdf(u[i, ] | mu, 1);      // likelihood
              target += normal_lpdf(x[i, ] | x_loc[i, ], 1);
              target += normal_lpdf(y[i, ] | y_loc[i, ], 1);
         }
@@ -208,12 +209,12 @@ Let's compare the estimates of parameters with their actual values:
 optim_fit$par[1:5] #estimated mu
 mu_alex #real mu
 optim_fit$par[6:45] #estimated alpha
-alpha_alex #real alpha
+t(alpha_alex) #real alpha
 optim_fit$par[46:58] #estimated gamma
-gamma_alex #real gamma
+t(gamma_alex) #real gamma
 ```
 
-gamma_9,...,gamma_13 parameters are not estmated correctly. These are essentially our eta parameters. Other than that, the rest of parameters are closely estimated. Let's try HMC and SVI. The result of running SVI when we don't have a hidden confounder is in data folder, under the name ```vb_fit_alex_without_hidden_confounder```. The result of running HMC when we don't have a hidden confounder is in data folder, under the name ```hmc_fit_alex_without_hidden_confounder```. It is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
+The parameters are closely estimated. Let's try HMC and SVI. The result of running SVI when we don't have a hidden confounder is in data folder, under the name ```vb_fit_alex_without_hidden_confounder```. The result of running HMC when we don't have a hidden confounder is in data folder, under the name ```hmc_fit_alex_without_hidden_confounder```. It is the result of HMC run with 2000 iteration, 1000 warmup, 2 chains, and a fixed seed. 
 
 ## SVI without hidden confounder
 
@@ -228,12 +229,12 @@ mu_alex #real mu
 ```
 ```{r}
 summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][6:45]
-alpha_alex #real alpha
+t(alpha_alex) #real alpha
 ```
 
 ```{r}
 summary(knocker::vb_fit_alex_without_hidden_confounder)$summary[,"mean"][46:58]
-gamma_alex #real gamma
+t(gamma_alex) #real gamma
 ```
 
 Again, gamma_9,...,gamma_13 parameters are not estmated correctly. These are essentially our eta parameters. Other than that, the rest of parameters are closely estimated.
@@ -241,10 +242,10 @@ Again, gamma_9,...,gamma_13 parameters are not estmated correctly. These are ess
 ## HMC without hidden confounders
 
 ```{r}
-#I added max_treedepth if I want to run this algorithm once again, because I recieved this warning: "There were 2000 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10."
+#I will add max_treedepth if I want to run this algorithm once again, because I received this warning: "There were 2000 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10."
 
-#hmc_fit_alex_without_hidden_confounder <- rstan::sampling(mod, data=data_list,chains = 2, iter = 2000, warmup = 1000, seed = seed, control = list(max_treedepth = 15)) 
-#usethis::use_data(hmc_fit_alex_without_hidden_confounder)
+# hmc_fit_alex_without_hidden_confounder <- rstan::sampling(mod, data=data_list,chains = 2, iter = 2000, warmup = 1000, seed = seed, control = list(max_treedepth = 15)) 
+# usethis::use_data(hmc_fit_alex_without_hidden_confounder)
 ```
 
 ```{r fig.height=8, fig.width=8}
@@ -287,7 +288,7 @@ alpha_alex
 ```{r}
 samples_gamma <- extract(knocker::hmc_fit_alex_without_hidden_confounder, "gamma")
 colMeans(samples_gamma$gamma[,,1])
-gamma_alex
+t(gamma_alex)
 ```
 
 It learns all the parameters correctly except for gamma_9,...,gamma_13, which are essentially the eta parameter.
@@ -325,7 +326,7 @@ model_str_alex_with_hidden_confounder <- "
             target += normal_lpdf(alpha[j, ] | 0, 1);
         }
         for (j in 1:(L+N)){
-            target += normal_lpdf(gamma[j, ] | 0, 1);
+            target += normal_lpdf(gamma[j, ] | 0, 10);
         }
         for (i in 1:D){
              target += normal_lpdf(u[i, ] | mu, 10);      // likelihood
@@ -359,9 +360,9 @@ mu_alex #real mu
 #optim_fit_with_hidden_confounder$par[6:(D*L)] #estimated u
 #u_train_alex #real u
 optim_fit_with_hidden_confounder$par[5006:5045] #estimated alpha
-alpha_alex #real alpha
+t(alpha_alex) #real alpha
 optim_fit_with_hidden_confounder$par[5046:5058] #estimated gamma
-gamma_alex #real gamma
+t(gamma_alex) #real gamma
 ```
 
 It doesn't learn the parameters correctly when u is hidden except for gamma1,...,gamma8.
@@ -382,12 +383,12 @@ mu_alex #real mu
 ```
 ```{r}
 summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][5006:5045]
-alpha_alex #real alpha
+t(alpha_alex) #real alpha
 ```
 
 ```{r}
 summary(knocker::vb_fit_alex_with_hidden_confounder)$summary[,"mean"][5046:5058]
-gamma_alex #real gamma
+t(gamma_alex) #real gamma
 ```
 
 It doesn't learn the parameters correctly when u is hidden.
@@ -439,7 +440,7 @@ alpha_alex
 ```{r}
 samples_gamma <- extract(knocker::hmc_fit_alex_with_hidden_confounder, "gamma")
 colMeans(samples_gamma$gamma[,,1])
-gamma_alex
+t(gamma_alex)
 ```
 
 It doesn't learn the parameters correctly except for the first 8 parameters of $\gamma$, which are essentially $\beta$ parameters!

@@ -193,7 +193,7 @@ optim_fit$par[54:59] #estimated gamma
 t(gamma) #real gamma
 ```
 
-It seems like the parameters are closely estimated except for $\mu$ and $\gamma$. 
+It seems like the parameters are closely estimated except for some parameters of $\gamma$. 
 
 ## HMC without hidden confounders
 
